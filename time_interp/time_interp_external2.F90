@@ -389,14 +389,19 @@ module time_interp_external2_mod
       allocate(pes(mpp_npes()))
       call mpp_get_current_pelist(pes)
       allocate(tstamp(ntime),tstart(ntime),tend(ntime),tavg(ntime))
-      if (check_uniform_times .and. ntime .gt. 4) then
+      if (uniform_times_check .and. ntime .gt. 4) then
          call read_data(fileobj,timename,tstamp(,corner=(/1,/),edge_lengths=(/4,/))
          if((tstamp(4)-tstamp(3)).eq.(tstamp(2)-tstamp(1))) then
-           call read_data(fileobj,timename,tstamp(1),unlim_dim_level=ntime)
+           call read_data(fileobj,timename,tstamp(ntime),unlim_dim_level=ntime)
            dtime=tstamp(2)-tstamp(1)
-           do n=2,ntime
+           do n=2,ntime-1
              tstamp(n)=tstamp(n-1)+dtime
            enddo
+           if (abs(tstamp(ntime)-tstamp(ntime-1)+dtime).gt.0.01*dtime) then
+             call mpp_error(WARNING,"init_external_field:"//&
+              " Uniform time check failed. Reverting to slow initialization ")
+             call read_data(fileobj,timename,tstamp)
+           endif
          else
            if (mpp_root_pe() .eq. mpp_pe()) call read_data(fileobj, timename, tstamp)
            call mpp_broadcast(tstamp, size(tstamp), mpp_root_pe(), pelist=pes)
