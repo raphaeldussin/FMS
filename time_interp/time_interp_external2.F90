@@ -269,7 +269,8 @@ module time_interp_external2_mod
     !> @param [inout] axis_sizes array of axis lengths ordered X-Y-Z-T (optional).
     function init_external_field(file,fieldname,domain,desired_units,&
          verbose,axis_names, axis_sizes,override,correct_leap_year_inconsistency,&
-         permit_calendar_conversion,use_comp_domain,ierr, nwindows, ignore_axis_atts, ongrid )
+         permit_calendar_conversion,use_comp_domain,ierr, nwindows, ignore_axis_atts, ongrid,&
+         check_uniform_times)
 
       character(len=*), intent(in)            :: file,fieldname
       logical, intent(in), optional           :: verbose
@@ -283,13 +284,16 @@ module time_interp_external2_mod
       integer,          intent(in),  optional :: nwindows
       logical, optional                       :: ignore_axis_atts
       logical, optional                       :: ongrid !< Optional flag indicating if the data is ongrid
+      logical, optional                       :: check_uniform_times !< Optional flag to do a minimal check
+                                                                   !! on a few records and assume a uniform
+                                                                   !! time axis if this check passes.
 
       logical :: ongrid_local !< Flag indicating if the data is ongrid
-
+      logical :: uniform_times_check
       integer :: init_external_field
 
-      real(r8_kind) :: slope, intercept
-      integer :: ndim,ntime,i,j
+      real(r8_kind) :: slope, intercept, dtime
+      integer :: ndim,ntime,i,j,n
       integer :: iscomp,iecomp,jscomp,jecomp,isglobal,ieglobal,jsglobal,jeglobal
       integer :: isdata,iedata,jsdata,jedata, dxsize, dysize,dxsize_max,dysize_max
       logical :: verb, transpose_xy,use_comp_domain1
@@ -323,7 +327,8 @@ module time_interp_external2_mod
       if (debug_this_module) verb = .true.
       numwindows = 1
       if(present(nwindows)) numwindows = nwindows
-
+      uniform_times_check=.false.
+      if (present(check_uniform_times)) uniform_times_check=check_uniform_times
       units = 'same'
       if (PRESENT(desired_units)) then
           units = desired_units
@@ -384,11 +389,25 @@ module time_interp_external2_mod
       allocate(pes(mpp_npes()))
       call mpp_get_current_pelist(pes)
       allocate(tstamp(ntime),tstart(ntime),tend(ntime),tavg(ntime))
-
-      !< Only root reads the unlimited dimension and broadcasts it to the other ranks
-      if (mpp_root_pe() .eq. mpp_pe()) call read_data(fileobj, timename, tstamp)
-      call mpp_broadcast(tstamp, size(tstamp), mpp_root_pe(), pelist=pes)
-      deallocate(pes)
+      if (check_uniform_times .and. ntime .gt. 4) then
+         call read_data(fileobj,timename,tstamp(,corner=(/1,/),edge_lengths=(/4,/))
+         if((tstamp(4)-tstamp(3)).eq.(tstamp(2)-tstamp(1))) then
+           call read_data(fileobj,timename,tstamp(1),unlim_dim_level=ntime)
+           dtime=tstamp(2)-tstamp(1)
+           do n=2,ntime
+             tstamp(n)=tstamp(n-1)+dtime
+           enddo
+         else
+           if (mpp_root_pe() .eq. mpp_pe()) call read_data(fileobj, timename, tstamp)
+           call mpp_broadcast(tstamp, size(tstamp), mpp_root_pe(), pelist=pes)
+           deallocate(pes)
+         endif
+      else
+        !< Only root reads the unlimited dimension and broadcasts it to the other ranks
+        if (mpp_root_pe() .eq. mpp_pe()) call read_data(fileobj, timename, tstamp)
+        call mpp_broadcast(tstamp, size(tstamp), mpp_root_pe(), pelist=pes)
+        deallocate(pes)
+      endif
 
       transpose_xy = .false.
       isdata=1; iedata=1; jsdata=1; jedata=1

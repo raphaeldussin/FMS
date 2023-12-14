@@ -72,6 +72,7 @@ type data_type
    type(time_type), dimension(:), pointer :: time_records => NULL()
    type(time_type), dimension(:), pointer :: time_prev_records => NULL()
    type(time_type), dimension(:), pointer :: time_next_records => NULL()
+   logical            :: uniform_time_axis=.false. !< the time axis is uniformly spaced
 end type data_type
 
 !> Private type for holding various data fields for performing data overrides
@@ -126,7 +127,8 @@ logical                                    :: reproduce_null_char_bug = .false. 
                                               !! the netcdf file
 logical                                    :: use_data_table_yaml = .false.
 
-namelist /data_override_nml/ debug_data_override, grid_center_bug, reproduce_null_char_bug, use_data_table_yaml
+namelist /data_override_nml/ debug_data_override, grid_center_bug, reproduce_null_char_bug, use_data_table_yaml, &
+                             uniform_times
 
 public :: DATA_OVERRIDE_INIT_IMPL_, DATA_OVERRIDE_UNSET_ATM_, DATA_OVERRIDE_UNSET_OCN_, &
         & DATA_OVERRIDE_UNSET_LND_, DATA_OVERRIDE_UNSET_ICE_, DATA_OVERRIDE_0D_, &
@@ -857,7 +859,7 @@ subroutine DATA_OVERRIDE_0D_(gridname,fieldname_code,data_out,time,override,data
      ! record fieldname, gridname in override_array
      override_array(curr_position)%fieldname = fieldname_code
      override_array(curr_position)%gridname = gridname
-     id_time = init_external_field(filename,fieldname,verbose=.false.)
+     id_time = init_external_field(filename,fieldname,verbose=.false.,check_uniform_times=uniform_times)
      if(id_time<0) call mpp_error(FATAL,'data_override:field not found in init_external_field 1')
      override_array(curr_position)%t_index = id_time
   else !curr_position >0
@@ -871,7 +873,7 @@ subroutine DATA_OVERRIDE_0D_(gridname,fieldname_code,data_out,time,override,data
   if_multi1: if (multifile) then
     id_time_prev = -1
     if_prev1: if (trim(prevfilename) /= '') then
-      id_time_prev = init_external_field(prevfilename,fieldname,verbose=.false.)
+      id_time_prev = init_external_field(prevfilename,fieldname,verbose=.false.,check_uniform_times=uniform_times)
       dims = get_external_field_size(id_time)
       prev_dims = get_external_field_size(id_time_prev)
       ! check consistency of spatial dims
@@ -884,7 +886,7 @@ subroutine DATA_OVERRIDE_0D_(gridname,fieldname_code,data_out,time,override,data
     endif if_prev1
     id_time_next = -1
     if_next1: if (trim(nextfilename) /= '') then
-      id_time_next = init_external_field(nextfilename,fieldname,verbose=.false.)
+      id_time_next = init_external_field(nextfilename,fieldname,verbose=.false.,check_uniform_times=uniform_times)
       dims = get_external_field_size(id_time)
       next_dims = get_external_field_size(id_time_next)
       ! check consistency of spatial dims
@@ -1160,7 +1162,8 @@ subroutine DATA_OVERRIDE_3D_(gridname,fieldname_code,return_data,time,override,d
 
         !--- we always only pass data on compute domain
         id_time = init_external_field(filename,fieldname,domain=domain,verbose=.false., &
-                                    use_comp_domain=use_comp_domain, nwindows=nwindows, ongrid=ongrid)
+             use_comp_domain=use_comp_domain, nwindows=nwindows, ongrid=ongrid, &
+             ,check_uniform_times=uniform_times)
 
         ! if using consecutive files for data_override, get time axis for previous and next files
         ! and check spatial dims for consistency
@@ -1169,7 +1172,7 @@ subroutine DATA_OVERRIDE_3D_(gridname,fieldname_code,return_data,time,override,d
           if_prev4:if (trim(prevfilename) /= '') then
             id_time_prev = init_external_field(prevfilename,fieldname,domain=domain, &
                verbose=.false.,use_comp_domain=use_comp_domain, &
-               nwindows = nwindows, ongrid=ongrid)
+               nwindows = nwindows, ongrid=ongrid,check_uniform_times=uniform_times)
             dims = get_external_field_size(id_time)
             prev_dims = get_external_field_size(id_time_prev)
             ! check consistency of spatial dims
@@ -1184,7 +1187,7 @@ subroutine DATA_OVERRIDE_3D_(gridname,fieldname_code,return_data,time,override,d
           if_next4: if (trim(nextfilename) /= '') then
             id_time_next = init_external_field(nextfilename,fieldname,domain=domain, &
                verbose=.false.,use_comp_domain=use_comp_domain, &
-               nwindows = nwindows, ongrid=ongrid)
+               nwindows = nwindows, ongrid=ongrid,check_uniform_times=uniform_times)
             dims = get_external_field_size(id_time)
             next_dims = get_external_field_size(id_time_next)
             ! check consistency of spatial dims
@@ -1206,7 +1209,7 @@ subroutine DATA_OVERRIDE_3D_(gridname,fieldname_code,return_data,time,override,d
      else !ongrid=false
         id_time = init_external_field(filename,fieldname,domain=domain, axis_names=axis_names,&
             axis_sizes=axis_sizes, verbose=.false.,override=.true.,use_comp_domain=use_comp_domain, &
-            nwindows = nwindows)
+            nwindows = nwindows,check_uniform_times=uniform_times)
 
         ! if using consecutive files for data_override, get time axis for previous and next files
         ! and check spatial dims for consistency
@@ -1215,7 +1218,7 @@ subroutine DATA_OVERRIDE_3D_(gridname,fieldname_code,return_data,time,override,d
           if_prev5: if (trim(prevfilename) /= '') then
             id_time_prev = init_external_field(prevfilename,fieldname,domain=domain, axis_names=axis_names,&
                axis_sizes=axis_sizes, verbose=.false.,override=.true.,use_comp_domain=use_comp_domain, &
-               nwindows = nwindows)
+               nwindows = nwindows,check_uniform_times=uniform_times)
             prev_dims = get_external_field_size(id_time_prev)
             allocate(data_table(index1)%time_prev_records(prev_dims(4)))
             call get_time_axis(id_time_prev,data_table(index1)%time_prev_records)
@@ -1224,7 +1227,7 @@ subroutine DATA_OVERRIDE_3D_(gridname,fieldname_code,return_data,time,override,d
           if_next5: if (trim(nextfilename) /= '') then
             id_time_next = init_external_field(nextfilename,fieldname,domain=domain, axis_names=axis_names,&
                axis_sizes=axis_sizes, verbose=.false.,override=.true.,use_comp_domain=use_comp_domain, &
-               nwindows = nwindows)
+               nwindows = nwindows,check_uniform_times=uniform_times)
             next_dims = get_external_field_size(id_time_next)
             allocate(data_table(index1)%time_next_records(next_dims(4)))
             call get_time_axis(id_time_next,data_table(index1)%time_next_records)
