@@ -126,6 +126,7 @@ logical                                    :: reproduce_null_char_bug = .false. 
                                               !! not read correctly if null characters are present in
                                               !! the netcdf file
 logical                                    :: use_data_table_yaml = .false.
+logical                                    :: uniform_times
 
 namelist /data_override_nml/ debug_data_override, grid_center_bug, reproduce_null_char_bug, use_data_table_yaml, &
                              uniform_times
@@ -1163,7 +1164,7 @@ subroutine DATA_OVERRIDE_3D_(gridname,fieldname_code,return_data,time,override,d
         !--- we always only pass data on compute domain
         id_time = init_external_field(filename,fieldname,domain=domain,verbose=.false., &
              use_comp_domain=use_comp_domain, nwindows=nwindows, ongrid=ongrid, &
-             ,check_uniform_times=uniform_times)
+             check_uniform_times=uniform_times)
 
         ! if using consecutive files for data_override, get time axis for previous and next files
         ! and check spatial dims for consistency

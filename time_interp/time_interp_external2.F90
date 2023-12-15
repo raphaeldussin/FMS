@@ -390,7 +390,7 @@ module time_interp_external2_mod
       call mpp_get_current_pelist(pes)
       allocate(tstamp(ntime),tstart(ntime),tend(ntime),tavg(ntime))
       if (uniform_times_check .and. ntime .gt. 4) then
-         call read_data(fileobj,timename,tstamp(,corner=(/1,/),edge_lengths=(/4,/))
+         call read_data(fileobj,timename,tstamp)
          if((tstamp(4)-tstamp(3)).eq.(tstamp(2)-tstamp(1))) then
            call read_data(fileobj,timename,tstamp(ntime),unlim_dim_level=ntime)
            dtime=tstamp(2)-tstamp(1)
